@@ -12,3 +12,6 @@ https://www.python.org/downloads/
 1. Запустить install.bat он установит необходимые либы 
 2. В файле config.py установить свои данные
 3. Запустить скрипт через start.bat
+
+
+Кошелек для доната: UQB7xj1ksP93QDyj5puExBt6ajE9K17STNJmmPNzUu_-9n3u
