@@ -53,7 +53,7 @@ async def get_transactions():
                             await nft_buy(destination)
                             logging.info(f"Processed address: {destination}")
 
-
+print(f'\rРаботаем...', end='')
 
 async def monitor_nft_sales():
     while True:
