@@ -14,4 +14,4 @@ https://www.python.org/downloads/
 3. Запустить скрипт через start.bat
 
 
-Кошелек для доната: UQB7xj1ksP93QDyj5puExBt6ajE9K17STNJmmPNzUu_-9n3u
+Кошелек для доната: youarenoteligible.ton
