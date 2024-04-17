@@ -2,7 +2,7 @@ import aiohttp
 import asyncio
 import logging
 from pytoniq import LiteBalancer, WalletV4R2
-from config import MNEMONICS, API_KEY
+from config import MNEMONICS, API_KEY, NFT_ADDRESS, NFT_COLLECTION_ADDRESS
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
@@ -11,11 +11,8 @@ headers = {
     "Accept": "application/json",
     "X-API-KEY": API_KEY
 }
-# Самая важная часть, которая все еще работает колхозно, адреса что тут находятся это два последних адреса контракта продажи, если не хотите в пустую тратить бабки на комсу при каждом старте софта, то найдите по адресу EQBmSy9SfRj44LZPi84NyvI4seJlZYSz33MM0rl78DnkCb2Z последние два кошеля с контрактом продажи и напишите их тут
-processed_addresses = {
-    "EQAk5i9ti7_mUU1QLqUU8TBkZqpivzNwQXMXIfBge5c7QRZD",
-    "EQDbMFUDqzo_5ZgaWivQRKoxIuaZpzTL5Qtz1OCCYaXDJP_4"
-}
+
+processed_addresses = set()
 
 
 async def nft_buy(destination):
@@ -23,7 +20,7 @@ async def nft_buy(destination):
     await provider.start_up()
 
     wallet = await WalletV4R2.from_mnemonic(provider=provider, mnemonics=MNEMONICS)
-    # Здесь у нас куда пойдут бабки и сколько
+
     transfer = {
         "destination": destination,
         "amount": 3000000000,
@@ -34,26 +31,32 @@ async def nft_buy(destination):
 
 async def fetch(session, url):
     async with session.get(url, headers=headers) as response:
-        await asyncio.sleep(0.05) 
+        await asyncio.sleep(0.1) # Sleep for 100 milliseconds to stay within the rate limit
         return await response.json()
 
 async def get_transactions():
     async with aiohttp.ClientSession() as session:
-        # Здесь указывается адрес кошелька, который будет парсить, в нашем случае это EQBmSy9SfRj44LZPi84NyvI4seJlZYSz33MM0rl78DnkCb2Z
-        url = "https://toncenter.com/api/v2/getTransactions?address=EQBmSy9SfRj44LZPi84NyvI4seJlZYSz33MM0rl78DnkCb2Z&limit=4&to_lt=0&archival=false"
+        url = f"https://toncenter.com/api/v3/nft/transfers?address={NFT_ADDRESS}&collection_address={NFT_COLLECTION_ADDRESS}&direction=out&limit=2&offset=0&sort=desc"
         response = await fetch(session, url)
 
-        for transaction in response['result']:
-            if 'out_msgs' in transaction and transaction['out_msgs']:
-                for msg in transaction['out_msgs']:
-                    if msg['value'] == '20000000':
-                        destination = msg['destination']
-                        if destination not in processed_addresses:
-                            processed_addresses.add(destination)
-                            await nft_buy(destination)
-                            logging.info(f"Processed address: {destination}")
+        # Check if 'nft_transfers' key exists in the response
+        if 'nft_transfers' in response:
+            for transfer in response['nft_transfers']:
+                destination = transfer['new_owner']
+                # Add the first two addresses to processed_addresses
+                if len(processed_addresses) < 2:
+                    processed_addresses.add(destination)
+                    logging.info(f"Отработанные адреса: {destination}")
+                else:
+                    # Check if the current address is not already processed
+                    if destination not in processed_addresses:
+                        processed_addresses.add(destination)
+                        await nft_buy(destination)
+                        logging.info(f"Новый адрес контракта продажи: {destination}")
+        else:
+            logging.error("Не найдены кокошки(")
 
-print(f'\rРаботаем...', end='')
+logging.info("Начинаем работать....")
 
 async def monitor_nft_sales():
     while True:
