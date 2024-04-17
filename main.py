@@ -35,7 +35,7 @@ async def fetch(session, url):
         if 'application/json' not in content_type:
             logging.error(f"Непредвидённый тип контента: {content_type}")
             return {}
-        await asyncio.sleep(0.05) # Sleep for 100 milliseconds to stay within the rate limit
+        await asyncio.sleep(0.1)
         return await response.json()
 
 async def get_transactions():
