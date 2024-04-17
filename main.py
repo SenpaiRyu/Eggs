@@ -31,7 +31,11 @@ async def nft_buy(destination):
 
 async def fetch(session, url):
     async with session.get(url, headers=headers) as response:
-        await asyncio.sleep(0.1) # Сон на 100 милисек, чтобы не выходить за лимит 10 запросов в секунду
+        content_type = response.headers.get('Content-Type', '')
+        if 'application/json' not in content_type:
+            logging.error(f"Непредвидённый тип контента: {content_type}")
+            return {}
+        await asyncio.sleep(0.05) # Sleep for 100 milliseconds to stay within the rate limit
         return await response.json()
 
 async def get_transactions():
