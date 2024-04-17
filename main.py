@@ -31,7 +31,7 @@ async def nft_buy(destination):
 
 async def fetch(session, url):
     async with session.get(url, headers=headers) as response:
-        await asyncio.sleep(0.1) # Sleep for 100 milliseconds to stay within the rate limit
+        await asyncio.sleep(0.1) # Сон на 100 милисек, чтобы не выходить за лимит 10 запросов в секунду
         return await response.json()
 
 async def get_transactions():
@@ -39,16 +39,16 @@ async def get_transactions():
         url = f"https://toncenter.com/api/v3/nft/transfers?address={NFT_ADDRESS}&collection_address={NFT_COLLECTION_ADDRESS}&direction=out&limit=2&offset=0&sort=desc"
         response = await fetch(session, url)
 
-        # Check if 'nft_transfers' key exists in the response
+        
         if 'nft_transfers' in response:
             for transfer in response['nft_transfers']:
                 destination = transfer['new_owner']
-                # Add the first two addresses to processed_addresses
+                # Решение с двумя первыми адресами контрактов продажи
                 if len(processed_addresses) < 2:
                     processed_addresses.add(destination)
                     logging.info(f"Отработанные адреса: {destination}")
                 else:
-                    # Check if the current address is not already processed
+                    
                     if destination not in processed_addresses:
                         processed_addresses.add(destination)
                         await nft_buy(destination)
@@ -62,5 +62,5 @@ async def monitor_nft_sales():
     while True:
         await get_transactions()
 
-# Run the monitor_nft_sales function asynchronously
+
 asyncio.run(monitor_nft_sales())
