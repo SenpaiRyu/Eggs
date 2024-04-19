@@ -2,7 +2,9 @@ import aiohttp
 import asyncio
 import logging
 from pytoniq import LiteBalancer, WalletV4R2
-from config import MNEMONICS, API_KEY, NFT_ADDRESS, NFT_COLLECTION_ADDRESS
+from config import MNEMONICS, API_KEY, NFT_ADDRESS, NFT_COLLECTION_ADDRESS, NFT_PURCHASE_PRICE
+from parse_sale import get_sale_data
+from client import get_client
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
@@ -14,8 +16,7 @@ headers = {
 
 processed_addresses = set()
 
-
-async def nft_buy(destination):
+async def nft_buy(full_price, destination):
     provider = LiteBalancer.from_mainnet_config(1)
     await provider.start_up()
 
@@ -23,48 +24,52 @@ async def nft_buy(destination):
 
     transfer = {
         "destination": destination,
-        "amount": 3000000000,
+        "amount": full_price + 1000000000,
     }
 
     await wallet.transfer(**transfer)
     await provider.close_all()
+
 
 async def fetch(session, url):
     async with session.get(url, headers=headers) as response:
         content_type = response.headers.get('Content-Type', '')
         if 'application/json' not in content_type:
             logging.error(f"Непредвидённый тип контента: {content_type}")
-            return {}
-        await asyncio.sleep(0.1)
+            return {} # Return an empty dictionary or handle the error as needed
         return await response.json()
 
-async def get_transactions():
+
+async def get_transactions(client):
     async with aiohttp.ClientSession() as session:
         url = f"https://toncenter.com/api/v3/nft/transfers?address={NFT_ADDRESS}&collection_address={NFT_COLLECTION_ADDRESS}&direction=out&limit=2&offset=0&sort=desc"
         response = await fetch(session, url)
-
-        
         if 'nft_transfers' in response:
-            for transfer in response['nft_transfers']:
-                destination = transfer['new_owner']
-                # Решение с двумя первыми адресами контрактов продажи
-                if len(processed_addresses) < 2:
-                    processed_addresses.add(destination)
-                    logging.info(f"Отработанные адреса: {destination}")
+            new_addresses = set(t['new_owner'] for t in response['nft_transfers']) - processed_addresses
+            for destination in new_addresses:
+                processed_addresses.add(destination)
+                # Fetch the sale data for the new address
+                sale_data = await get_sale_data(client, destination)
+                if sale_data is None:
+                    # This destination is not a sale contract but an auction contract
+                    logging.info(f"Адрес контракта аукциона: {destination}")
                 else:
-                    
-                    if destination not in processed_addresses:
-                        processed_addresses.add(destination)
-                        await nft_buy(destination)
-                        logging.info(f"Новый адрес контракта продажи: {destination}")
+                    is_complete, nft_address, full_price = sale_data
+                    formatted_price = float(full_price / 1000000000) # Extract the numeric part of the price
+                    logging.info(f"Новый адрес контракта продажи: {destination}, Цена: {formatted_price} Ton")
+                    if formatted_price <= NFT_PURCHASE_PRICE and not is_complete and full_price > 0:
+                        #await nft_buy(full_price, destination)
+                        logging.warning(f"Купил NFT: {nft_address}, по цене: {formatted_price}")
         else:
-            logging.error("Не найдены кокошки(")
+            pass
+
 
 logging.info("Начинаем работать....")
 
 async def monitor_nft_sales():
+    client = await get_client(1, False)
     while True:
-        await get_transactions()
+        await get_transactions(client)
 
-
+# Run the monitor_nft_sales function asynchronously
 asyncio.run(monitor_nft_sales())
