@@ -1,7 +1,7 @@
-bitarray
 pytonlib
 tonsdk
 requests
 tvm_valuetypes
 aiohttp
 pytoniq
+bitarray
