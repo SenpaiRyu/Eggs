@@ -21,7 +21,7 @@ async def nft_buy(full_price, destination):
     await provider.start_up()
 
     wallet = await WalletV4R2.from_mnemonic(provider=provider, mnemonics=MNEMONICS)
-
+    # На какой адрес, какая сумма пойдет, +1000000000 это комиссия гетгемса, чтобы ваша транза точно прошла, вам вернется все что не было потрачено на комсу
     transfer = {
         "destination": destination,
         "amount": full_price + 1000000000,
@@ -48,17 +48,18 @@ async def get_transactions(client):
             new_addresses = set(t['new_owner'] for t in response['nft_transfers']) - processed_addresses
             for destination in new_addresses:
                 processed_addresses.add(destination)
-                # Fetch the sale data for the new address
+                # Парсим данные контракта
                 sale_data = await get_sale_data(client, destination)
                 if sale_data is None:
-                    # This destination is not a sale contract but an auction contract
+                    # Если мы не получили цену контракта, значит это аукцион
                     logging.info(f"Адрес контракта аукциона: {destination}")
                 else:
                     is_complete, nft_address, full_price = sale_data
-                    formatted_price = float(full_price / 1000000000) # Extract the numeric part of the price
+                    formatted_price = float(full_price / 1000000000) # Форматирует цену из нано в тоны
                     logging.info(f"Новый адрес контракта продажи: {destination}, Цена: {formatted_price} Ton")
+                    # Если цена меньше или равно вашему параметру и нфт еще не купили, то вы покупаете нфт
                     if formatted_price <= NFT_PURCHASE_PRICE and not is_complete and full_price > 0:
-                        #await nft_buy(full_price, destination)
+                        await nft_buy(full_price, destination)
                         logging.warning(f"Купил NFT: {nft_address}, по цене: {formatted_price}")
         else:
             pass
@@ -71,5 +72,5 @@ async def monitor_nft_sales():
     while True:
         await get_transactions(client)
 
-# Run the monitor_nft_sales function asynchronously
+
 asyncio.run(monitor_nft_sales())
