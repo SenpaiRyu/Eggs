@@ -2,6 +2,7 @@ import aiohttp
 import asyncio
 import logging
 from pytoniq import LiteBalancer, WalletV4R2
+from pytoniq_core import Address
 from config import MNEMONICS, API_KEY, NFT_ADDRESS, NFT_COLLECTION_ADDRESS, NFT_PURCHASE_PRICE
 from parse_sale import get_sale_data
 from client import get_client
@@ -16,14 +17,14 @@ headers = {
 
 processed_addresses = set()
 
-async def nft_buy(full_price, destination):
+async def nft_buy(full_price, formatted_destination):
     provider = LiteBalancer.from_mainnet_config(1)
     await provider.start_up()
 
     wallet = await WalletV4R2.from_mnemonic(provider=provider, mnemonics=MNEMONICS)
-    # На какой адрес, какая сумма пойдет, +1000000000 это комиссия гетгемса, чтобы ваша транза точно прошла, вам вернется все что не было потрачено на комсу
+
     transfer = {
-        "destination": destination,
+        "destination": formatted_destination,
         "amount": full_price + 1000000000,
     }
 
@@ -47,20 +48,20 @@ async def get_transactions(client):
         if 'nft_transfers' in response:
             new_addresses = set(t['new_owner'] for t in response['nft_transfers']) - processed_addresses
             for destination in new_addresses:
+                formatted_destination = Address(destination).to_str(is_user_friendly=True, is_bounceable=True, is_url_safe=True)
                 processed_addresses.add(destination)
-                # Парсим данные контракта
-                sale_data = await get_sale_data(client, destination)
+                # Fetch the sale data for the new address
+                sale_data = await get_sale_data(client, formatted_destination)
                 if sale_data is None:
-                    # Если мы не получили цену контракта, значит это аукцион
-                    logging.info(f"Адрес контракта аукциона: {destination}")
+                    # This destination is not a sale contract but an auction contract
+                    logging.info(f"Адрес контракта аукциона: {formatted_destination}")
                 else:
                     is_complete, nft_address, full_price = sale_data
-                    formatted_price = float(full_price / 1000000000) # Форматирует цену из нано в тоны
-                    logging.info(f"Новый адрес контракта продажи: {destination}, Цена: {formatted_price} Ton")
-                    # Если цена меньше или равно вашему параметру и нфт еще не купили, то вы покупаете нфт
+                    formatted_price = float(full_price / 1000000000) # Extract the numeric part of the price
+                    logging.info(f"Новый адрес контракта продажи: {formatted_destination} Цена: {formatted_price} ton")
                     if formatted_price <= NFT_PURCHASE_PRICE and not is_complete and full_price > 0:
-                        await nft_buy(full_price, destination)
-                        logging.warning(f"Купил NFT: {nft_address}, по цене: {formatted_price}")
+                        await nft_buy(full_price, formatted_destination)
+                        logging.warning(f"Купил NFT: {nft_address}, по цене: {formatted_price} ton")
         else:
             pass
 
@@ -68,9 +69,9 @@ async def get_transactions(client):
 logging.info("Начинаем работать....")
 
 async def monitor_nft_sales():
-    client = await get_client(1, False)
+    client = await get_client(0, False)
     while True:
         await get_transactions(client)
 
-
+# Run the monitor_nft_sales function asynchronously
 asyncio.run(monitor_nft_sales())
