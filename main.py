@@ -31,7 +31,6 @@ async def nft_buy(full_price, formatted_destination):
     await wallet.transfer(**transfer)
     await provider.close_all()
 
-
 async def fetch(session, url):
     async with session.get(url, headers=headers) as response:
         content_type = response.headers.get('Content-Type', '')
@@ -40,38 +39,35 @@ async def fetch(session, url):
             return {} # Return an empty dictionary or handle the error as needed
         return await response.json()
 
-
-async def get_transactions(client):
-    async with aiohttp.ClientSession() as session:
-        url = f"https://toncenter.com/api/v3/nft/transfers?address={NFT_ADDRESS}&collection_address={NFT_COLLECTION_ADDRESS}&direction=out&limit=2&offset=0&sort=desc"
-        response = await fetch(session, url)
-        if 'nft_transfers' in response:
-            new_addresses = set(t['new_owner'] for t in response['nft_transfers']) - processed_addresses
-            for destination in new_addresses:
-                formatted_destination = Address(destination).to_str(is_user_friendly=True, is_bounceable=True, is_url_safe=True)
-                processed_addresses.add(destination)
-                # Fetch the sale data for the new address
-                sale_data = await get_sale_data(client, formatted_destination)
+async def get_transactions(client, session):
+    url = f"https://toncenter.com/api/v3/nft/transfers?address={NFT_ADDRESS}&collection_address={NFT_COLLECTION_ADDRESS}&direction=out&limit=5&offset=0&sort=desc"
+    response = await fetch(session, url)
+    if 'nft_transfers' in response:
+        new_addresses = set(t['new_owner'] for t in response['nft_transfers']) - processed_addresses
+        if new_addresses:
+            tasks = [get_sale_data(client, Address(destination).to_str(is_user_friendly=True, is_bounceable=True, is_url_safe=True)) for destination in new_addresses]
+            sale_data_list = await asyncio.gather(*tasks)
+            for sale_data, destination in zip(sale_data_list, new_addresses):
                 if sale_data is None:
-                    # This destination is not a sale contract but an auction contract
-                    logging.info(f"Адрес контракта аукциона: {formatted_destination}")
+                    logging.info(f"Адрес контракта аукциона: {destination}")
                 else:
                     is_complete, nft_address, full_price = sale_data
-                    formatted_price = float(full_price / 1000000000) # Extract the numeric part of the price
-                    logging.info(f"Новый адрес контракта продажи: {formatted_destination} Цена: {formatted_price} ton")
+                    formatted_price = float(full_price / 1000000000)
+                    logging.info(f"Новый адрес контракта продажи: {destination} Цена: {formatted_price} ton")
                     if formatted_price <= NFT_PURCHASE_PRICE and not is_complete and full_price > 0:
-                        await nft_buy(full_price, formatted_destination)
                         logging.warning(f"Купил NFT: {nft_address}, по цене: {formatted_price} ton")
-        else:
-            pass
+                        await nft_buy(full_price, destination)
+                processed_addresses.add(destination)
+    else:
+        pass
 
+async def main():
+    async with aiohttp.ClientSession() as session:
+        client = await get_client(0, False)
+        while True:
+            await get_transactions(client, session)
 
 logging.info("Начинаем работать....")
 
-async def monitor_nft_sales():
-    client = await get_client(0, False)
-    while True:
-        await get_transactions(client)
-
-# Run the monitor_nft_sales function asynchronously
-asyncio.run(monitor_nft_sales())
+# Run the main function asynchronously
+asyncio.run(main())
